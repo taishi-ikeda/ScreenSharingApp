@@ -1,0 +1,19 @@
+add_executable(screensharing_tests test_smoke.cpp)
+target_link_libraries(screensharing_tests PRIVATE screensharing_core Qt${QT_VERSION_MAJOR}::Test)
+add_test(NAME screensharing_tests COMMAND screensharing_tests)
+
+add_executable(screensharing_session_store_tests test_session_store.cpp)
+target_link_libraries(screensharing_session_store_tests PRIVATE screensharing_core Qt${QT_VERSION_MAJOR}::Test)
+add_test(NAME screensharing_session_store_tests COMMAND screensharing_session_store_tests)
+
+add_executable(screensharing_xor_cipher_tests test_xor_cipher.cpp)
+target_link_libraries(screensharing_xor_cipher_tests PRIVATE screensharing_core Qt${QT_VERSION_MAJOR}::Test)
+add_test(NAME screensharing_xor_cipher_tests COMMAND screensharing_xor_cipher_tests)
+
+add_executable(screensharing_presenter_viewer_integration_tests test_presenter_viewer_integration.cpp)
+target_link_libraries(screensharing_presenter_viewer_integration_tests PRIVATE screensharing_core Qt${QT_VERSION_MAJOR}::Test)
+add_test(NAME screensharing_presenter_viewer_integration_tests COMMAND screensharing_presenter_viewer_integration_tests)
+
+add_executable(screensharing_presence_tests test_presence.cpp)
+target_link_libraries(screensharing_presence_tests PRIVATE screensharing_core Qt${QT_VERSION_MAJOR}::Test)
+add_test(NAME screensharing_presence_tests COMMAND screensharing_presence_tests)

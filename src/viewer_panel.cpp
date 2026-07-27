@@ -25,6 +25,7 @@ ViewerPanel::ViewerPanel(QWidget* parent)
     : QWidget(parent),
       codeLineEdit_(new QLineEdit(this)),
       connectButton_(new QPushButton(tr("Connect"), this)),
+      disconnectButton_(new QPushButton(tr("Disconnect"), this)),
       statusLabel_(new QLabel(tr("Not connected"), this)),
       videoLabel_(new QLabel(this)),
       logButton_(new QPushButton(tr("View Log"), this)),
@@ -36,6 +37,7 @@ ViewerPanel::ViewerPanel(QWidget* parent)
   statusLabel_->setObjectName(QStringLiteral("statusLabel"));
   codeLineEdit_->setMaxLength(4);
   codeLineEdit_->setPlaceholderText(tr("4-digit invite code"));
+  disconnectButton_->setEnabled(false);
   videoLabel_->setMinimumSize(320, 180);
   videoLabel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   videoLabel_->setAlignment(Qt::AlignCenter);
@@ -49,6 +51,7 @@ ViewerPanel::ViewerPanel(QWidget* parent)
   auto* codeRow = new QHBoxLayout;
   codeRow->addWidget(codeLineEdit_);
   codeRow->addWidget(connectButton_);
+  codeRow->addWidget(disconnectButton_);
 
   auto* layout = new QVBoxLayout(this);
   layout->addLayout(navRow);
@@ -61,14 +64,12 @@ ViewerPanel::ViewerPanel(QWidget* parent)
 
   connect(connectButton_, &QPushButton::clicked, this,
           &ViewerPanel::onConnectClicked);
+  connect(disconnectButton_, &QPushButton::clicked, this,
+          &ViewerPanel::onDisconnectClicked);
   connect(logButton_, &QPushButton::clicked, this,
           &ViewerPanel::onLogClicked);
   connect(backButton_, &QPushButton::clicked, this, [this]() {
-    if (reader_) {
-      logger_->log(tr("Left session %1").arg(connectedCode_));
-    }
-    resetConnection();
-    statusLabel_->setText(tr("Not connected"));
+    onDisconnectClicked();
     emit backRequested();
   });
 }
@@ -94,7 +95,18 @@ void ViewerPanel::onConnectClicked() {
   connectedCode_ = code;
   statusLabel_->setText(tr("Connected: %1").arg(code));
   logger_->log(tr("Connected to session %1").arg(code));
+  connectButton_->setEnabled(false);
+  codeLineEdit_->setEnabled(false);
+  disconnectButton_->setEnabled(true);
   pollTimer_->start();
+}
+
+void ViewerPanel::onDisconnectClicked() {
+  if (reader_) {
+    logger_->log(tr("Left session %1").arg(connectedCode_));
+  }
+  resetConnection();
+  statusLabel_->setText(tr("Not connected"));
 }
 
 void ViewerPanel::pollForFrame() {
@@ -126,6 +138,9 @@ void ViewerPanel::resetConnection() {
   pollTimer_->stop();
   reader_.reset();
   videoLabel_->setPixmap(QPixmap());
+  connectButton_->setEnabled(true);
+  codeLineEdit_->setEnabled(true);
+  disconnectButton_->setEnabled(false);
 }
 
 void ViewerPanel::disconnectSession(const QString& reason) {

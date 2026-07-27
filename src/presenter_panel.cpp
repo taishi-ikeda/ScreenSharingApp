@@ -45,8 +45,7 @@ PresenterPanel::PresenterPanel(QWidget* parent)
   for (const DisplayInfo& display : displays_) {
     displayComboBox_->addItem(display.label, display.id);
   }
-  resolutionComboBox_->addItems(
-      {tr("1920x1080"), tr("1280x720"), tr("854x480")});
+  updateResolutionOptions();
   stopButton_->setEnabled(false);
 
   auto* navRow = new QHBoxLayout;
@@ -58,14 +57,24 @@ PresenterPanel::PresenterPanel(QWidget* parent)
   buttonRow->addWidget(startButton_);
   buttonRow->addWidget(stopButton_);
 
+  auto* inviteCodeRow = new QHBoxLayout;
+  inviteCodeRow->addWidget(new QLabel(tr("Invite Code:"), this));
+  inviteCodeRow->addWidget(inviteCodeLabel_);
+  inviteCodeRow->addStretch();
+
+  auto* displayRow = new QHBoxLayout;
+  displayRow->addWidget(new QLabel(tr("Display:"), this));
+  displayRow->addWidget(displayComboBox_);
+
+  auto* resolutionRow = new QHBoxLayout;
+  resolutionRow->addWidget(new QLabel(tr("Resolution:"), this));
+  resolutionRow->addWidget(resolutionComboBox_);
+
   auto* layout = new QVBoxLayout(this);
   layout->addLayout(navRow);
-  layout->addWidget(new QLabel(tr("Invite Code:"), this));
-  layout->addWidget(inviteCodeLabel_);
-  layout->addWidget(new QLabel(tr("Display:"), this));
-  layout->addWidget(displayComboBox_);
-  layout->addWidget(new QLabel(tr("Resolution:"), this));
-  layout->addWidget(resolutionComboBox_);
+  layout->addLayout(inviteCodeRow);
+  layout->addLayout(displayRow);
+  layout->addLayout(resolutionRow);
   layout->addWidget(statsLabel_);
   layout->addLayout(buttonRow);
   layout->addStretch();
@@ -119,10 +128,29 @@ QString PresenterPanel::selectedDisplayId() const {
 }
 
 void PresenterPanel::onDisplaySelectionChanged(int index) {
+  updateResolutionOptions();
   if (index < 0 || index >= displays_.size()) {
     return;
   }
   showDisplayIdentifier(displays_.at(index));
+}
+
+void PresenterPanel::updateResolutionOptions() {
+  double aspectRatio = 16.0 / 9.0;
+  const int index = displayComboBox_->currentIndex();
+  if (index >= 0 && index < displays_.size()) {
+    const QRect& geometry = displays_.at(index).geometry;
+    if (geometry.width() > 0 && geometry.height() > 0) {
+      aspectRatio = static_cast<double>(geometry.width()) / geometry.height();
+    }
+  }
+
+  resolutionComboBox_->clear();
+  for (const int height : {1080, 720, 480}) {
+    int width = static_cast<int>(height * aspectRatio + 0.5);
+    width -= width % 2;  // keep dimensions even.
+    resolutionComboBox_->addItem(tr("%1x%2").arg(width).arg(height));
+  }
 }
 
 void PresenterPanel::showDisplayIdentifier(const DisplayInfo& display) {

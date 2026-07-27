@@ -32,6 +32,7 @@ class ViewerPanel : public QWidget {
 
  private slots:
   void onConnectClicked();
+  void onDisconnectClicked();
   void onLogClicked();
   void pollForFrame();
 
@@ -42,6 +43,7 @@ class ViewerPanel : public QWidget {
 
   QLineEdit* codeLineEdit_;
   QPushButton* connectButton_;
+  QPushButton* disconnectButton_;
   QLabel* statusLabel_;
   QLabel* videoLabel_;
   QPushButton* logButton_;

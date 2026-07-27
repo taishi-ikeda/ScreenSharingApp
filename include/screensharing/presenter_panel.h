@@ -45,6 +45,7 @@ class PresenterPanel : public QWidget {
   QSize selectedResolution() const;
   QString selectedDisplayId() const;
   void showDisplayIdentifier(const DisplayInfo& display);
+  void updateResolutionOptions();
 
   QLabel* inviteCodeLabel_;
   QComboBox* displayComboBox_;

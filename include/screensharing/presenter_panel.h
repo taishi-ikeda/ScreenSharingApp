@@ -39,18 +39,21 @@ class PresenterPanel : public QWidget {
   void onLogClicked();
   void publishNextFrame();
   void onDisplaySelectionChanged(int index);
+  void onFrameRateChanged();
+  void checkForResolutionChange();
 
  private:
   void generateInviteCode();
-  QSize selectedResolution() const;
+  double selectedResolutionScale() const;
   QString selectedDisplayId() const;
+  int selectedFps() const;
   void showDisplayIdentifier(const DisplayInfo& display);
-  void updateResolutionOptions();
 
   QLabel* inviteCodeLabel_;
   QComboBox* displayComboBox_;
   QList<DisplayInfo> displays_;
   QComboBox* resolutionComboBox_;
+  QComboBox* frameRateComboBox_;
   QLabel* statsLabel_;
   QPushButton* startButton_;
   QPushButton* stopButton_;
@@ -59,9 +62,11 @@ class PresenterPanel : public QWidget {
   Logger* logger_;
   LogDialog* logDialog_;
   QTimer* frameTimer_;
+  QTimer* resolutionCheckTimer_;
   int framesInWindow_;
   qint64 bytesInWindow_;
   QElapsedTimer statsTimer_;
+  QSize lastKnownNativeSize_;
   std::unique_ptr<ScreenCapturer> capturer_;
   std::unique_ptr<SessionWriter> writer_;
   QString inviteCode_;

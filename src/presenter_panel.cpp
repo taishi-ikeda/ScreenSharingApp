@@ -21,7 +21,7 @@
 namespace screensharing {
 
 namespace {
-constexpr int kFrameIntervalMs = 1000 / 15;  // SPEC.md default: 15fps.
+constexpr int kDefaultFps = 15;  // SPEC.md default.
 }  // namespace
 
 PresenterPanel::PresenterPanel(QWidget* parent)
@@ -29,6 +29,7 @@ PresenterPanel::PresenterPanel(QWidget* parent)
       inviteCodeLabel_(new QLabel(tr("----"), this)),
       displayComboBox_(new QComboBox(this)),
       resolutionComboBox_(new QComboBox(this)),
+      frameRateComboBox_(new QComboBox(this)),
       statsLabel_(new QLabel(tr("fps: -- / throughput: --"), this)),
       startButton_(new QPushButton(tr("Start"), this)),
       stopButton_(new QPushButton(tr("Stop"), this)),
@@ -37,6 +38,7 @@ PresenterPanel::PresenterPanel(QWidget* parent)
       logger_(new Logger(this)),
       logDialog_(nullptr),
       frameTimer_(new QTimer(this)),
+      resolutionCheckTimer_(new QTimer(this)),
       framesInWindow_(0),
       bytesInWindow_(0),
       capturer_(ScreenCapturer::create()) {
@@ -45,7 +47,12 @@ PresenterPanel::PresenterPanel(QWidget* parent)
   for (const DisplayInfo& display : displays_) {
     displayComboBox_->addItem(display.label, display.id);
   }
-  updateResolutionOptions();
+  resolutionComboBox_->addItems(
+      {QStringLiteral("1"), QStringLiteral("1/2"), QStringLiteral("1/4")});
+  for (const int fps : {30, 15, 10, 5}) {
+    frameRateComboBox_->addItem(tr("%1 fps").arg(fps), fps);
+  }
+  frameRateComboBox_->setCurrentIndex(frameRateComboBox_->findData(kDefaultFps));
   stopButton_->setEnabled(false);
 
   auto* navRow = new QHBoxLayout;
@@ -70,20 +77,31 @@ PresenterPanel::PresenterPanel(QWidget* parent)
   resolutionRow->addWidget(new QLabel(tr("Resolution:"), this));
   resolutionRow->addWidget(resolutionComboBox_);
 
+  auto* frameRateRow = new QHBoxLayout;
+  frameRateRow->addWidget(new QLabel(tr("Frame Rate:"), this));
+  frameRateRow->addWidget(frameRateComboBox_);
+
   auto* layout = new QVBoxLayout(this);
   layout->addLayout(navRow);
   layout->addLayout(inviteCodeRow);
   layout->addLayout(displayRow);
   layout->addLayout(resolutionRow);
+  layout->addLayout(frameRateRow);
   layout->addWidget(statsLabel_);
   layout->addLayout(buttonRow);
   layout->addStretch();
 
-  frameTimer_->setInterval(kFrameIntervalMs);
+  frameTimer_->setInterval(1000 / selectedFps());
   connect(frameTimer_, &QTimer::timeout, this, &PresenterPanel::publishNextFrame);
+
+  resolutionCheckTimer_->setInterval(2000);
+  connect(resolutionCheckTimer_, &QTimer::timeout, this,
+          &PresenterPanel::checkForResolutionChange);
 
   connect(displayComboBox_, QOverload<int>::of(&QComboBox::activated), this,
           &PresenterPanel::onDisplaySelectionChanged);
+  connect(frameRateComboBox_, QOverload<int>::of(&QComboBox::activated), this,
+          &PresenterPanel::onFrameRateChanged);
 
   connect(startButton_, &QPushButton::clicked, this,
           &PresenterPanel::onStartClicked);
@@ -114,43 +132,37 @@ void PresenterPanel::generateInviteCode() {
   }
 }
 
-QSize PresenterPanel::selectedResolution() const {
-  const QStringList parts =
-      resolutionComboBox_->currentText().split(QLatin1Char('x'));
-  if (parts.size() != 2) {
-    return QSize(1280, 720);
+double PresenterPanel::selectedResolutionScale() const {
+  const QString text = resolutionComboBox_->currentText();
+  if (text == QLatin1String("1/2")) {
+    return 0.5;
   }
-  return QSize(parts.at(0).toInt(), parts.at(1).toInt());
+  if (text == QLatin1String("1/4")) {
+    return 0.25;
+  }
+  return 1.0;
 }
 
 QString PresenterPanel::selectedDisplayId() const {
   return displayComboBox_->currentData().toString();
 }
 
+int PresenterPanel::selectedFps() const {
+  const int fps = frameRateComboBox_->currentData().toInt();
+  return fps > 0 ? fps : kDefaultFps;
+}
+
 void PresenterPanel::onDisplaySelectionChanged(int index) {
-  updateResolutionOptions();
   if (index < 0 || index >= displays_.size()) {
     return;
   }
   showDisplayIdentifier(displays_.at(index));
 }
 
-void PresenterPanel::updateResolutionOptions() {
-  double aspectRatio = 16.0 / 9.0;
-  const int index = displayComboBox_->currentIndex();
-  if (index >= 0 && index < displays_.size()) {
-    const QRect& geometry = displays_.at(index).geometry;
-    if (geometry.width() > 0 && geometry.height() > 0) {
-      aspectRatio = static_cast<double>(geometry.width()) / geometry.height();
-    }
-  }
-
-  resolutionComboBox_->clear();
-  for (const int height : {1080, 720, 480}) {
-    int width = static_cast<int>(height * aspectRatio + 0.5);
-    width -= width % 2;  // keep dimensions even.
-    resolutionComboBox_->addItem(tr("%1x%2").arg(width).arg(height));
-  }
+void PresenterPanel::onFrameRateChanged() {
+  // Takes effect immediately even while frameTimer_ is running, so the
+  // frame-advance speed can be adjusted mid-share, not just before Start.
+  frameTimer_->setInterval(1000 / selectedFps());
 }
 
 void PresenterPanel::showDisplayIdentifier(const DisplayInfo& display) {
@@ -212,18 +224,21 @@ void PresenterPanel::onStartClicked() {
   framesInWindow_ = 0;
   bytesInWindow_ = 0;
   statsTimer_.start();
+  lastKnownNativeSize_ = QSize();
 
   startButton_->setEnabled(false);
   stopButton_->setEnabled(true);
   displayComboBox_->setEnabled(false);
   resolutionComboBox_->setEnabled(false);
   frameTimer_->start();
+  resolutionCheckTimer_->start();
 }
 
 void PresenterPanel::onStopClicked() {
   const bool wasRunning = static_cast<bool>(writer_);
 
   frameTimer_->stop();
+  resolutionCheckTimer_->stop();
   writer_.reset();
   capturer_->stop();
 
@@ -238,13 +253,28 @@ void PresenterPanel::onStopClicked() {
   statsLabel_->setText(tr("fps: -- / throughput: --"));
 }
 
+void PresenterPanel::checkForResolutionChange() {
+  // ScreenCapturer::captureFrame() already adapts to the sender's current
+  // screen size on every single frame (see screen_capturer.h); this timer
+  // only exists to surface the change to the user via the log.
+  const QSize current = capturer_->nativeSize();
+  if (current.isEmpty() || current == lastKnownNativeSize_) {
+    return;
+  }
+  if (!lastKnownNativeSize_.isEmpty()) {
+    logger_->log(tr("Sender display resolution changed to %1x%2")
+                      .arg(current.width())
+                      .arg(current.height()));
+  }
+  lastKnownNativeSize_ = current;
+}
+
 void PresenterPanel::publishNextFrame() {
   if (!writer_) {
     return;
   }
 
-  const QSize resolution = selectedResolution();
-  const QImage frame = capturer_->captureFrame(resolution);
+  const QImage frame = capturer_->captureFrame(selectedResolutionScale());
   if (frame.isNull()) {
     // Capture hasn't produced a frame yet (e.g. still warming up, or the
     // OS permission prompt hasn't been answered). Keep the session alive
@@ -256,9 +286,9 @@ void PresenterPanel::publishNextFrame() {
   const QByteArray raw = packImageBytes(frame);
   const QByteArray encrypted = XorCipher(inviteCode_).transform(raw);
 
-  // frame's actual size, not the requested bounding box: captureFrame()
-  // preserves the source display's aspect ratio, so it may be smaller
-  // than `resolution` in one dimension.
+  // frame's actual size: it tracks the sender's current screen size times
+  // the selected scale, so it can change from one tick to the next if the
+  // sender's screen was resized.
   if (writer_->writeFrame(encrypted, frame.width(), frame.height())) {
     writer_->touchHeartbeat();
     ++framesInWindow_;

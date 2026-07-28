@@ -4,6 +4,7 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
@@ -38,13 +39,27 @@ bool SessionWriter::start() {
   if (!SessionPaths::ensureBaseDir()) {
     return false;
   }
-  QDir dir;
-  if (!dir.mkpath(SessionPaths::sessionDir(code_))) {
-    return false;
+
+  const QString path = SessionPaths::sessionDir(code_);
+  const QFileInfo info(path);
+  if (info.exists()) {
+    // A stale directory from a crashed session (possibly a different OS
+    // account's) happened to get the same random invite code. chmod()
+    // requires owning it, so a non-owner can't (and doesn't need to) redo
+    // the permissions; just reuse it as-is.
+    if (!info.isDir()) {
+      return false;
+    }
+  } else {
+    QDir dir;
+    if (!dir.mkpath(path)) {
+      return false;
+    }
+    if (::chmod(qPrintable(path), 0755) != 0) {
+      return false;
+    }
   }
-  if (::chmod(qPrintable(SessionPaths::sessionDir(code_)), 0755) != 0) {
-    return false;
-  }
+
   started_ = true;
   touchHeartbeat();
   return true;

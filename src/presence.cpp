@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QTimer>
 
 #include "screensharing/session_paths.h"
@@ -34,9 +35,14 @@ QString currentUsername() {
 Presence::Presence(QObject* parent) : QObject(parent), heartbeatTimer_(new QTimer(this)) {
   SessionPaths::ensureBaseDir();
 
-  QDir dir;
-  dir.mkpath(presenceDir());
-  ::chmod(qPrintable(presenceDir()), 01777);
+  // Skip chmod if it already exists (possibly created by a different OS
+  // account's app instance): chmod() requires owning the file, so a
+  // non-owner can't redo the permissions here, and doesn't need to.
+  if (!QFileInfo(presenceDir()).exists()) {
+    QDir dir;
+    dir.mkpath(presenceDir());
+    ::chmod(qPrintable(presenceDir()), 01777);
+  }
 
   touchHeartbeat();
 

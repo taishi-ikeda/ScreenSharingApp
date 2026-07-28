@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 
 #include <QDir>
+#include <QFileInfo>
 
 namespace screensharing {
 namespace SessionPaths {
@@ -33,13 +34,21 @@ QString frameFilePath(const QString& code, int bufferIndex) {
 }
 
 bool ensureBaseDir() {
+  const QString path = baseDir();
+  if (QFileInfo(path).exists()) {
+    // Already created, quite possibly by a different OS account's app
+    // instance -- chmod() requires owning the file, so a non-owner can't
+    // (and doesn't need to) redo the permissions here.
+    return QFileInfo(path).isDir();
+  }
+
   QDir dir;
-  if (!dir.mkpath(baseDir())) {
+  if (!dir.mkpath(path)) {
     return false;
   }
   // 01777: sticky + rwx for everyone, mirroring /tmp itself so any OS
   // account can create its own session subdirectory but only remove its own.
-  return ::chmod(qPrintable(baseDir()), 01777) == 0;
+  return ::chmod(qPrintable(path), 01777) == 0;
 }
 
 }  // namespace SessionPaths

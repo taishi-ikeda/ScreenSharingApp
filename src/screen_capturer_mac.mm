@@ -35,7 +35,8 @@ class MacScreenCapturer : public ScreenCapturer {
   QList<DisplayInfo> availableDisplays() override;
   bool start(const QString& displayId) override;
   void stop() override;
-  QImage captureFrame(const QSize& targetSize) override;
+  QImage captureFrame(double scale) override;
+  QSize nativeSize() override;
 
   void storeFrame(const QImage& image);
 
@@ -180,7 +181,7 @@ void MacScreenCapturer::stop() {
   latestFrame_ = QImage();
 }
 
-QImage MacScreenCapturer::captureFrame(const QSize& targetSize) {
+QImage MacScreenCapturer::captureFrame(double scale) {
   QImage snapshot;
   {
     QMutexLocker locker(&mutex_);
@@ -189,12 +190,21 @@ QImage MacScreenCapturer::captureFrame(const QSize& targetSize) {
   if (snapshot.isNull()) {
     return QImage();
   }
-  // KeepAspectRatio: targetSize is a bounding box, not a forced shape.
-  // Distorting the aspect ratio here would bake it into the image before
-  // it's even sent; the actual output size may be smaller than targetSize
-  // in one dimension. The caller must use the returned image's own size,
-  // not targetSize, when publishing it.
-  return snapshot.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+  if (scale >= 1.0) {
+    return snapshot;
+  }
+  // Scale is uniform (same factor on both axes), so this can never distort
+  // the aspect ratio -- unlike scaling to some externally-chosen bounding
+  // box. It's relative to whatever snapshot's size actually is right now,
+  // so a mid-session resolution change is reflected automatically.
+  const QSize targetSize(static_cast<int>(snapshot.width() * scale + 0.5),
+                          static_cast<int>(snapshot.height() * scale + 0.5));
+  return snapshot.scaled(targetSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+}
+
+QSize MacScreenCapturer::nativeSize() {
+  QMutexLocker locker(&mutex_);
+  return latestFrame_.size();
 }
 
 void MacScreenCapturer::storeFrame(const QImage& image) {
